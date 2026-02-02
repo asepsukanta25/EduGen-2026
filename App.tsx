@@ -31,9 +31,16 @@ const App: React.FC = () => {
     try {
       const result = await generateEducationalContent(formData, (msg) => setLoadingMsg(msg));
       setContent(result);
-    } catch (error) {
-      console.error(error);
-      alert('Gagal menghasilkan modul. Silakan coba lagi.');
+    } catch (error: any) {
+      console.error("Generation error:", error);
+      
+      const isQuotaError = error?.message?.includes('429') || error?.status === 429 || error?.message?.includes('quota');
+      
+      if (isQuotaError) {
+        alert("Batas penggunaan API (Quota) telah tercapai. Mohon tunggu sekitar 1 menit sebelum mencoba lagi, atau gunakan API Key yang berbeda.");
+      } else {
+        alert('Gagal menghasilkan modul. Silakan periksa koneksi atau coba lagi nanti.');
+      }
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -61,42 +68,34 @@ const App: React.FC = () => {
     });
   };
 
-  const handleExportToDoc = () => {
+  const handleSalinKeDoc = async () => {
     const element = document.getElementById('print-content');
     if (!element) return;
 
-    // Create a special HTML structure that Word/Google Docs understands well
-    const header = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-            xmlns:w='urn:schemas-microsoft-com:office:word' 
-            xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Export</title>
-      <style>
-        body { font-family: Arial, sans-serif; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
-        .bg-indigo-600 { background-color: #4f46e5 !important; color: white; }
-        h1 { font-size: 24pt; }
-        h2 { font-size: 18pt; margin-top: 20pt; }
-        .page-break-avoid { page-break-inside: avoid; }
-      </style>
-      </head><body>`;
-    const footer = "</body></html>";
-    const sourceHTML = header + element.innerHTML + footer;
-    
-    const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
-    const fileDownload = document.createElement("a");
-    document.body.appendChild(fileDownload);
-    fileDownload.href = source;
-    fileDownload.download = `Modul_Ajar_${formData.topic.replace(/\s+/g, '_')}.doc`;
-    fileDownload.click();
-    document.body.removeChild(fileDownload);
-    
-    alert("File .doc telah diunduh. Silakan upload ke Google Drive dan buka dengan Google Docs untuk mengedit.");
+    try {
+      // Mengambil HTML dari konten hasil generate
+      const htmlContent = `
+        <div style="font-family: 'Arial', sans-serif; color: #1e293b; background-color: white;">
+          ${element.innerHTML}
+        </div>
+      `;
+
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const data = [new ClipboardItem({ 'text/html': blob })];
+      
+      await navigator.clipboard.write(data);
+      alert("Konten berhasil disalin! Sekarang buka dokumen Google Docs baru Anda dan tekan Ctrl+V (Tempel).");
+    } catch (err) {
+      console.error("Gagal menyalin:", err);
+      alert("Maaf, gagal menyalin otomatis. Anda dapat mencoba menyorot teks secara manual atau gunakan tombol 'Simpan PDF'.");
+    }
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!content) return;
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   return (
@@ -198,11 +197,12 @@ const App: React.FC = () => {
               <h2 className="text-2xl font-bold font-heading text-slate-800">Paket Pembelajaran Siap</h2>
               <div className="flex flex-wrap justify-center gap-3">
                 <button 
-                  onClick={handleExportToDoc}
+                  onClick={handleSalinKeDoc}
                   className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl flex items-center gap-2 transition shadow-md"
+                  title="Klik untuk menyalin konten, lalu paste (Ctrl+V) di Google Docs"
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-                  Simpan ke Google Doc
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  Salin ke Google Doc
                 </button>
                 <button 
                   onClick={handleDownloadPDF}

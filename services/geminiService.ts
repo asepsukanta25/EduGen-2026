@@ -4,28 +4,61 @@ import { GeneratedContent } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-const generateIllustration = async (prompt: string): Promise<string> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: `A clean, professional, educational illustration for a school worksheet about: ${prompt}. Minimalist style, clear focus, suitable for printing on a white background.` }],
-      },
-      config: {
-        imageConfig: { aspectRatio: "16:9" }
+/**
+ * Fungsi pembantu untuk melakukan pemanggilan API dengan logika retry (exponential backoff)
+ * Hal ini sangat penting untuk menangani error 429 (Resource Exhausted/Quota Limit)
+ */
+async function callWithRetry<T>(
+  apiCall: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 2000
+): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error: any) {
+      lastError = error;
+      const isQuotaError = error?.message?.includes('429') || error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED');
+      
+      // Jika sudah mencapai percobaan maksimal atau bukan error yang bisa di-retry (selain 429/5xx)
+      if (attempt === maxRetries || (!isQuotaError && error?.status < 500)) {
+        throw error;
       }
-    });
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+      // Hitung delay: exponential backoff (2s, 4s, 8s...)
+      const delay = initialDelay * Math.pow(2, attempt);
+      console.warn(`API call failed (Attempt ${attempt + 1}). Retrying in ${delay}ms...`, error);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-    return '';
-  } catch (e) {
-    console.error("Image generation failed", e);
-    return '';
   }
+  throw lastError;
+}
+
+const generateIllustration = async (prompt: string): Promise<string> => {
+  return callWithRetry(async () => {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: `A clean, professional, educational illustration for a school worksheet about: ${prompt}. Minimalist style, clear focus, suitable for printing on a white background.` }],
+        },
+        config: {
+          imageConfig: { aspectRatio: "16:9" }
+        }
+      });
+
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+      return '';
+    } catch (e) {
+      console.error("Image generation failed", e);
+      return ''; // Jika gambar gagal tetap lanjut tanpa gambar
+    }
+  }, 2); // Retry 2 kali untuk gambar
 };
 
 export const generateEducationalContent = async (params: {
@@ -53,161 +86,163 @@ export const generateEducationalContent = async (params: {
   
   Gunakan format JSON sesuai schema.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          modulAjar: { 
-            type: Type.OBJECT,
-            properties: {
-              identitas: {
-                type: Type.OBJECT,
-                properties: {
-                  sekolah: { type: Type.STRING },
-                  mataPelajaran: { type: Type.STRING },
-                  kelas: { type: Type.STRING },
-                  fase: { type: Type.STRING },
-                  alokasiWaktu: { type: Type.STRING },
-                  penyusun: { type: Type.STRING },
-                },
-                required: ["sekolah", "mataPelajaran", "kelas", "fase", "alokasiWaktu", "penyusun"]
-              },
-              kompetensiAwal: { type: Type.ARRAY, items: { type: Type.STRING } },
-              profilPelajarPancasila: { type: Type.ARRAY, items: { type: Type.STRING } },
-              saranaPrasarana: { type: Type.ARRAY, items: { type: Type.STRING } },
-              targetMurid: { type: Type.STRING },
-              tujuanPembelajaran: { type: Type.ARRAY, items: { type: Type.STRING } },
-              pemahamanBermakna: { type: Type.STRING },
-              pertanyaanPemantik: { type: Type.ARRAY, items: { type: Type.STRING } },
-              kegiatanPembelajaran: {
-                type: Type.OBJECT,
-                properties: {
-                  pendahuluan: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  inti: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  penutup: { type: Type.ARRAY, items: { type: Type.STRING } },
-                },
-                required: ["pendahuluan", "inti", "penutup"]
-              },
-              asesmen: {
-                type: Type.OBJECT,
-                properties: {
-                  diagnostik: { type: Type.STRING },
-                  formatif: { type: Type.STRING },
-                  sumatif: { type: Type.STRING },
-                },
-                required: ["diagnostik", "formatif", "sumatif"]
-              },
-              refleksi: { type: Type.STRING },
-            },
-            required: ["identitas", "kompetensiAwal", "profilPelajarPancasila", "tujuanPembelajaran", "kegiatanPembelajaran", "asesmen", "refleksi", "targetMurid"]
-          },
-          lkpd: { 
-            type: Type.OBJECT,
-            properties: {
-              judul: { type: Type.STRING },
-              petunjukBelajar: { type: Type.ARRAY, items: { type: Type.STRING } },
-              materiSingkat: { type: Type.STRING },
-              visuals: {
-                type: Type.ARRAY,
-                items: {
+  const response = await callWithRetry(async () => {
+    return await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            modulAjar: { 
+              type: Type.OBJECT,
+              properties: {
+                identitas: {
                   type: Type.OBJECT,
                   properties: {
-                    prompt: { type: Type.STRING },
-                    caption: { type: Type.STRING }
+                    sekolah: { type: Type.STRING },
+                    mataPelajaran: { type: Type.STRING },
+                    kelas: { type: Type.STRING },
+                    fase: { type: Type.STRING },
+                    alokasiWaktu: { type: Type.STRING },
+                    penyusun: { type: Type.STRING },
                   },
-                  required: ["prompt", "caption"]
-                }
-              },
-              tugasMandiri: {
-                type: Type.OBJECT,
-                properties: {
-                  instruksi: { type: Type.STRING },
-                  pertanyaan: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  required: ["sekolah", "mataPelajaran", "kelas", "fase", "alokasiWaktu", "penyusun"]
                 },
-                required: ["instruksi", "pertanyaan"]
+                kompetensiAwal: { type: Type.ARRAY, items: { type: Type.STRING } },
+                profilPelajarPancasila: { type: Type.ARRAY, items: { type: Type.STRING } },
+                saranaPrasarana: { type: Type.ARRAY, items: { type: Type.STRING } },
+                targetMurid: { type: Type.STRING },
+                tujuanPembelajaran: { type: Type.ARRAY, items: { type: Type.STRING } },
+                pemahamanBermakna: { type: Type.STRING },
+                pertanyaanPemantik: { type: Type.ARRAY, items: { type: Type.STRING } },
+                kegiatanPembelajaran: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pendahuluan: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    inti: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    penutup: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  },
+                  required: ["pendahuluan", "inti", "penutup"]
+                },
+                asesmen: {
+                  type: Type.OBJECT,
+                  properties: {
+                    diagnostik: { type: Type.STRING },
+                    formatif: { type: Type.STRING },
+                    sumatif: { type: Type.STRING },
+                  },
+                  required: ["diagnostik", "formatif", "sumatif"]
+                },
+                refleksi: { type: Type.STRING },
               },
-              tugasKelompok: {
-                type: Type.OBJECT,
-                properties: {
-                  instruksi: { type: Type.STRING },
-                  tabelData: {
+              required: ["identitas", "kompetensiAwal", "profilPelajarPancasila", "tujuanPembelajaran", "kegiatanPembelajaran", "asesmen", "refleksi", "targetMurid"]
+            },
+            lkpd: { 
+              type: Type.OBJECT,
+              properties: {
+                judul: { type: Type.STRING },
+                petunjukBelajar: { type: Type.ARRAY, items: { type: Type.STRING } },
+                materiSingkat: { type: Type.STRING },
+                visuals: {
+                  type: Type.ARRAY,
+                  items: {
                     type: Type.OBJECT,
                     properties: {
-                      headers: { type: Type.ARRAY, items: { type: Type.STRING } },
-                      rows: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
+                      prompt: { type: Type.STRING },
+                      caption: { type: Type.STRING }
                     },
-                    required: ["headers", "rows"]
-                  },
+                    required: ["prompt", "caption"]
+                  }
                 },
-                required: ["instruksi"]
-              },
-              refleksiMurid: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: ["judul", "petunjukBelajar", "materiSingkat", "tugasMandiri", "tugasKelompok", "refleksiMurid"]
-          },
-          lampiran: {
-            type: Type.OBJECT,
-            properties: {
-              lembarObservasi: { type: Type.ARRAY, items: { type: Type.STRING } },
-              instrumenAsesmen: {
-                type: Type.OBJECT,
-                properties: {
-                  jenis: { type: Type.STRING },
-                  soal: { type: Type.ARRAY, items: { type: Type.STRING } }
-                },
-                required: ["jenis", "soal"]
-              },
-              rubrikPenilaian: {
-                type: Type.ARRAY,
-                items: {
+                tugasMandiri: {
                   type: Type.OBJECT,
                   properties: {
-                    kriteria: { type: Type.STRING },
-                    level: {
+                    instruksi: { type: Type.STRING },
+                    pertanyaan: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  },
+                  required: ["instruksi", "pertanyaan"]
+                },
+                tugasKelompok: {
+                  type: Type.OBJECT,
+                  properties: {
+                    instruksi: { type: Type.STRING },
+                    tabelData: {
                       type: Type.OBJECT,
                       properties: {
-                        perluBimbingan: { type: Type.STRING },
-                        cukup: { type: Type.STRING },
-                        baik: { type: Type.STRING },
-                        sangatBaik: { type: Type.STRING }
+                        headers: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        rows: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
                       },
-                      required: ["perluBimbingan", "cukup", "baik", "sangatBaik"]
-                    }
+                      required: ["headers", "rows"]
+                    },
                   },
-                  required: ["kriteria", "level"]
-                }
-              },
-              pengayaanRemedial: {
-                type: Type.OBJECT,
-                properties: {
-                  pengayaan: { type: Type.STRING },
-                  remedial: { type: Type.STRING }
+                  required: ["instruksi"]
                 },
-                required: ["pengayaan", "remedial"]
+                refleksiMurid: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              glosarium: {
-                type: Type.ARRAY,
-                items: {
+              required: ["judul", "petunjukBelajar", "materiSingkat", "tugasMandiri", "tugasKelompok", "refleksiMurid"]
+            },
+            lampiran: {
+              type: Type.OBJECT,
+              properties: {
+                lembarObservasi: { type: Type.ARRAY, items: { type: Type.STRING } },
+                instrumenAsesmen: {
                   type: Type.OBJECT,
                   properties: {
-                    istilah: { type: Type.STRING },
-                    arti: { type: Type.STRING }
+                    jenis: { type: Type.STRING },
+                    soal: { type: Type.ARRAY, items: { type: Type.STRING } }
                   },
-                  required: ["istilah", "arti"]
-                }
+                  required: ["jenis", "soal"]
+                },
+                rubrikPenilaian: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      kriteria: { type: Type.STRING },
+                      level: {
+                        type: Type.OBJECT,
+                        properties: {
+                          perluBimbingan: { type: Type.STRING },
+                          cukup: { type: Type.STRING },
+                          baik: { type: Type.STRING },
+                          sangatBaik: { type: Type.STRING }
+                        },
+                        required: ["perluBimbingan", "cukup", "baik", "sangatBaik"]
+                      }
+                    },
+                    required: ["kriteria", "level"]
+                  }
+                },
+                pengayaanRemedial: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pengayaan: { type: Type.STRING },
+                    remedial: { type: Type.STRING }
+                  },
+                  required: ["pengayaan", "remedial"]
+                },
+                glosarium: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      istilah: { type: Type.STRING },
+                      arti: { type: Type.STRING }
+                    },
+                    required: ["istilah", "arti"]
+                  }
+                },
+                daftarPustaka: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              daftarPustaka: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["lembarObservasi", "instrumenAsesmen", "rubrikPenilaian", "pengayaanRemedial", "glosarium", "daftarPustaka"]
-          }
-        },
-        required: ["modulAjar", "lkpd", "lampiran"]
+              required: ["lembarObservasi", "instrumenAsesmen", "rubrikPenilaian", "pengayaanRemedial", "glosarium", "daftarPustaka"]
+            }
+          },
+          required: ["modulAjar", "lkpd", "lampiran"]
+        }
       }
-    }
+    });
   });
 
   const text = response.text;
