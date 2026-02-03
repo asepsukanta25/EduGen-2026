@@ -1,4 +1,13 @@
 
+export interface SignatureData {
+  city: string;
+  date: string;
+  principalName: string;
+  principalNip: string;
+  teacherName: string;
+  teacherNip: string;
+}
+
 export interface ModulAjar {
   identitas: {
     sekolah: string;
@@ -34,7 +43,7 @@ export interface VisualElement {
   url?: string;
 }
 
-export interface LKPD {
+export interface LembarKerja {
   judul: string;
   petunjukBelajar: string[];
   materiSingkat: string;
@@ -64,6 +73,10 @@ export interface Rubrik {
 }
 
 export interface Lampiran {
+  materiAjar: {
+    judul: string;
+    konten: string;
+  };
   lembarObservasi: string[];
   instrumenAsesmen: {
     jenis: string;
@@ -80,6 +93,6 @@ export interface Lampiran {
 
 export interface GeneratedContent {
   modulAjar: ModulAjar;
-  lkpd: LKPD;
+  lembarKerja: LembarKerja;
   lampiran: Lampiran;
 }

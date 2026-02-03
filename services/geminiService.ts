@@ -1,95 +1,128 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { GeneratedContent } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
- * Fungsi pembantu untuk melakukan pemanggilan API dengan logika retry (exponential backoff)
- * Hal ini sangat penting untuk menangani error 429 (Resource Exhausted/Quota Limit)
+ * Enhanced exponential backoff retry mechanism to handle rate limits (Error 429)
+ * Increased maxRetries and baseDelay for better stability on free tier keys.
  */
-async function callWithRetry<T>(
-  apiCall: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelay: number = 2000
-): Promise<T> {
+const retryWithBackoff = async <T>(fn: () => Promise<T>, maxRetries = 5, baseDelay = 3500): Promise<T> => {
   let lastError: any;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let i = 0; i < maxRetries; i++) {
     try {
-      return await apiCall();
+      return await fn();
     } catch (error: any) {
       lastError = error;
-      const isQuotaError = error?.message?.includes('429') || error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED');
+      // Detect 429 errors from various property formats
+      const isQuotaError = 
+        error?.message?.includes('429') || 
+        error?.status === 429 || 
+        error?.code === 429 ||
+        (typeof error === 'string' && error.includes('429'));
       
-      // Jika sudah mencapai percobaan maksimal atau bukan error yang bisa di-retry (selain 429/5xx)
-      if (attempt === maxRetries || (!isQuotaError && error?.status < 500)) {
-        throw error;
+      if (isQuotaError && i < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, i);
+        console.warn(`Quota limit hit (429). Retrying in ${delay}ms (Attempt ${i + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
       }
-
-      // Hitung delay: exponential backoff (2s, 4s, 8s...)
-      const delay = initialDelay * Math.pow(2, attempt);
-      console.warn(`API call failed (Attempt ${attempt + 1}). Retrying in ${delay}ms...`, error);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      throw error;
     }
   }
   throw lastError;
-}
+};
 
 const generateIllustration = async (prompt: string): Promise<string> => {
-  return callWithRetry(async () => {
-    try {
-      const response = await ai.models.generateContent({
+  try {
+    const response: GenerateContentResponse = await retryWithBackoff(() => 
+      ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
-          parts: [{ text: `A clean, professional, educational illustration for a school worksheet about: ${prompt}. Minimalist style, clear focus, suitable for printing on a white background.` }],
+          parts: [{ text: `A clean, professional, educational illustration for a school worksheet for students/pupils about: ${prompt}. Minimalist style, suitable for black and white printing.` }],
         },
         config: {
           imageConfig: { aspectRatio: "16:9" }
         }
-      });
+      })
+    );
 
+    if (response.candidates && response.candidates[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
-      return '';
-    } catch (e) {
-      console.error("Image generation failed", e);
-      return ''; // Jika gambar gagal tetap lanjut tanpa gambar
     }
-  }, 2); // Retry 2 kali untuk gambar
+    return '';
+  } catch (e) {
+    console.error("Image generation failed:", e);
+    return '';
+  }
 };
 
 export const generateEducationalContent = async (params: {
+  school: string;
   subject: string;
   topic: string;
   grade: string;
   duration: string;
-  focus: string;
+  pilar: string;
+  model: string;
+  method: string;
+  specialInstructions?: string;
+  referenceFiles?: { name: string, mimeType: string, data: string }[];
 }, onProgress?: (msg: string) => void): Promise<GeneratedContent> => {
   
-  if (onProgress) onProgress("Menyusun struktur kurikulum & lampiran...");
+  if (onProgress) onProgress("Menganalisis referensi & merancang strategi Deep Learning...");
 
-  const prompt = `Buatlah Modul Ajar, Lembar Kerja (sebelumnya LKPD), dan Lampiran lengkap berdasarkan Kurikulum Merdeka versi terbaru 2026 dengan prinsip Deep Learning.
-  Mata Pelajaran: ${params.subject}
-  Topik: ${params.topic}
-  Kelas: ${params.grade}
-  Durasi: ${params.duration}
-  Fokus Tambahan: ${params.focus}
-
-  PENTING: 
-  1. Gunakan istilah "Murid" untuk menggantikan istilah "Siswa" atau "Peserta Didik" di seluruh dokumen.
-  2. Gunakan istilah "Lembar Kerja" untuk menggantikan istilah "LKPD" atau "Lembar Kerja Peserta Didik".
-  3. Buat Lampiran yang mencakup: Lembar Observasi Guru, Instrumen Asesmen (soal-soal), Rubrik Penilaian mendetail (4 level), panduan Pengayaan & Remedial, Glosarium, dan Daftar Pustaka.
-  4. Pada bagian Lembar Kerja, buatlah 2 prompt deskripsi gambar (visuals) yang bisa diilustrasikan oleh AI.
+  const userPrompt = `Buatlah Modul Ajar, Lembar Kerja Murid, dan Lampiran lengkap berdasarkan Kurikulum Merdeka versi terbaru 2026.
   
-  Gunakan format JSON sesuai schema.`;
+  ATURAN BAHASA (SANGAT PENTING):
+  - Dilarang keras menggunakan kata "Siswa" atau "Peserta Didik".
+  - Gunakan istilah "Murid" untuk merujuk pada subjek didik.
+  - Gunakan istilah "Lembar Kerja Murid" atau "Lembar Kerja" untuk menggantikan istilah "LKPD".
+  
+  PENDEKATAN DEEP LEARNING:
+  - Pilar: ${params.pilar}
+  - Model: ${params.model}
+  - Metode: ${params.method}
 
-  const response = await callWithRetry(async () => {
-    return await ai.models.generateContent({
+  IDENTITAS UTAMA (HARUS DIGUNAKAN):
+  - Nama Sekolah: ${params.school}
+  - Mata Pelajaran: ${params.subject}
+  - Topik: ${params.topic}
+  - Kelas: ${params.grade}
+  - Durasi: ${params.duration}
+
+  ${params.specialInstructions ? `INSTRUKSI KHUSUS GURU: ${params.specialInstructions}` : ''}
+  ${params.referenceFiles && params.referenceFiles.length > 0 ? `PRIORITASKAN INFORMASI DARI FILE REFERENSI YANG DIUNGGAH.` : ''}
+
+  STRUKTUR OUTPUT:
+  1. Modul Ajar: Fokus pada kedalaman pemahaman (Understanding), aplikasi (Applying), dan refleksi (Reflecting).
+  2. Lembar Kerja: Aktivitas yang memancing pemikiran mendalam.
+  3. Lampiran: Materi Ajar lengkap, instrumen asesmen, rubrik, glosarium, dan daftar pustaka.
+
+  Gunakan format JSON sesuai schema. Pastikan field modulAjar.identitas.sekolah berisi "${params.school}".`;
+
+  const contentParts: any[] = [{ text: userPrompt }];
+  
+  if (params.referenceFiles) {
+    params.referenceFiles.forEach(file => {
+      contentParts.push({
+        inlineData: {
+          data: file.data,
+          mimeType: file.mimeType
+        }
+      });
+    });
+  }
+
+  const response: GenerateContentResponse = await retryWithBackoff(() => 
+    ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: prompt,
+      contents: { parts: contentParts },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -139,7 +172,7 @@ export const generateEducationalContent = async (params: {
               },
               required: ["identitas", "kompetensiAwal", "profilPelajarPancasila", "tujuanPembelajaran", "kegiatanPembelajaran", "asesmen", "refleksi", "targetMurid"]
             },
-            lkpd: { 
+            lembarKerja: { 
               type: Type.OBJECT,
               properties: {
                 judul: { type: Type.STRING },
@@ -186,6 +219,14 @@ export const generateEducationalContent = async (params: {
             lampiran: {
               type: Type.OBJECT,
               properties: {
+                materiAjar: {
+                  type: Type.OBJECT,
+                  properties: {
+                    judul: { type: Type.STRING },
+                    konten: { type: Type.STRING }
+                  },
+                  required: ["judul", "konten"]
+                },
                 lembarObservasi: { type: Type.ARRAY, items: { type: Type.STRING } },
                 instrumenAsesmen: {
                   type: Type.OBJECT,
@@ -236,23 +277,20 @@ export const generateEducationalContent = async (params: {
                 },
                 daftarPustaka: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              required: ["lembarObservasi", "instrumenAsesmen", "rubrikPenilaian", "pengayaanRemedial", "glosarium", "daftarPustaka"]
+              required: ["materiAjar", "lembarObservasi", "instrumenAsesmen", "rubrikPenilaian", "pengayaanRemedial", "glosarium", "daftarPustaka"]
             }
           },
-          required: ["modulAjar", "lkpd", "lampiran"]
+          required: ["modulAjar", "lembarKerja", "lampiran"]
         }
       }
-    });
-  });
+    })
+  );
 
-  const text = response.text;
-  if (!text) throw new Error("Gagal mendapatkan respon dari AI.");
-  
-  const content: GeneratedContent = JSON.parse(text);
+  const content: GeneratedContent = JSON.parse(response.text || '{}');
 
-  if (content.lkpd.visuals && content.lkpd.visuals.length > 0) {
-    if (onProgress) onProgress("Melukis ilustrasi visual untuk Lembar Kerja...");
-    for (const visual of content.lkpd.visuals) {
+  if (content.lembarKerja.visuals && content.lembarKerja.visuals.length > 0) {
+    if (onProgress) onProgress("Melukis ilustrasi visual untuk Lembar Kerja Murid...");
+    for (const visual of content.lembarKerja.visuals) {
       visual.url = await generateIllustration(visual.prompt);
     }
   }

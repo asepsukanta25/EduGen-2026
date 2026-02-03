@@ -1,25 +1,36 @@
 
 import React from 'react';
-import { Lampiran } from '../types';
+import { Lampiran, SignatureData } from '../types';
 
 interface Props {
   data: Lampiran;
+  signature: SignatureData;
 }
 
-const LampiranView: React.FC<Props> = ({ data }) => {
+const LampiranView: React.FC<Props> = ({ data, signature }) => {
   return (
-    <div className="bg-white p-8 md:p-12 shadow-lg border border-slate-200 rounded-xl mt-8 print-break">
+    <div className="bg-white p-8 md:p-12 border border-slate-200 rounded-xl">
       <div className="border-b-4 border-slate-800 pb-4 mb-8">
         <h1 className="text-3xl font-bold font-heading text-slate-800 uppercase">Lampiran</h1>
-        <p className="text-slate-500 font-semibold uppercase tracking-wider">Asesmen, Rubrik, & Materi Pendukung</p>
+        <p className="text-slate-500 font-semibold uppercase tracking-wider">Materi, Asesmen, Rubrik, & Pendukung</p>
       </div>
 
       <div className="space-y-12">
-        {/* Lembar Observasi */}
+        {/* Seksi Materi Ajar Lengkap */}
         <section className="page-break-avoid">
-          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 flex items-center gap-2">
-            <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-            1. Lembar Observasi Guru (Sikap/Profil Pancasila)
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
+            1. Materi Ajar: {data.materiAjar.judul}
+          </h2>
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8">
+            <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+              {data.materiAjar.konten}
+            </div>
+          </div>
+        </section>
+
+        <section className="page-break-avoid">
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
+            2. Lembar Observasi Guru
           </h2>
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
@@ -27,7 +38,7 @@ const LampiranView: React.FC<Props> = ({ data }) => {
                 <tr>
                   <th className="p-3 text-left font-bold border-r">No</th>
                   <th className="p-3 text-left font-bold border-r">Aspek yang Diamati</th>
-                  <th className="p-3 text-left font-bold">Catatan Observasi</th>
+                  <th className="p-3 text-left font-bold">Catatan</th>
                 </tr>
               </thead>
               <tbody>
@@ -43,12 +54,8 @@ const LampiranView: React.FC<Props> = ({ data }) => {
           </div>
         </section>
 
-        {/* Instrumen Asesmen */}
         <section className="page-break-avoid">
-          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 flex items-center gap-2">
-            <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            2. Instrumen Asesmen ({data.instrumenAsesmen.jenis})
-          </h2>
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 uppercase tracking-wide">3. Instrumen Asesmen ({data.instrumenAsesmen.jenis})</h2>
           <div className="space-y-4 ml-8">
             {data.instrumenAsesmen.soal.map((soal, i) => (
               <div key={i} className="text-slate-700">
@@ -59,31 +66,27 @@ const LampiranView: React.FC<Props> = ({ data }) => {
           </div>
         </section>
 
-        {/* Rubrik Penilaian */}
         <section className="page-break-avoid">
-          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 flex items-center gap-2">
-            <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-            3. Rubrik Penilaian Tindakan/Kinerja
-          </h2>
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 uppercase tracking-wide">4. Rubrik Penilaian</h2>
           <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs">
               <thead className="bg-slate-800 text-white">
                 <tr>
-                  <th className="p-2 border border-slate-700 w-1/5">Kriteria</th>
-                  <th className="p-2 border border-slate-700">Perlu Bimbingan (1)</th>
-                  <th className="p-2 border border-slate-700">Cukup (2)</th>
-                  <th className="p-2 border border-slate-700">Baik (3)</th>
-                  <th className="p-2 border border-slate-700">Sangat Baik (4)</th>
+                  <th className="p-3 text-left border-r border-slate-700 w-1/4">Kriteria</th>
+                  <th className="p-3 text-center border-r border-slate-700">Perlu Bimbingan (1)</th>
+                  <th className="p-3 text-center border-r border-slate-700">Cukup (2)</th>
+                  <th className="p-3 text-center border-r border-slate-700">Baik (3)</th>
+                  <th className="p-3 text-center">Sangat Baik (4)</th>
                 </tr>
               </thead>
               <tbody>
-                {data.rubrikPenilaian.map((rubrik, i) => (
-                  <tr key={i} className="border-b">
-                    <td className="p-2 font-bold border-r bg-slate-50">{rubrik.kriteria}</td>
-                    <td className="p-2 border-r italic text-slate-500">{rubrik.level.perluBimbingan}</td>
-                    <td className="p-2 border-r text-slate-600">{rubrik.level.cukup}</td>
-                    <td className="p-2 border-r text-slate-700 font-medium">{rubrik.level.baik}</td>
-                    <td className="p-2 text-indigo-700 font-bold bg-indigo-50">{rubrik.level.sangatBaik}</td>
+                {data.rubrikPenilaian.map((item, i) => (
+                  <tr key={i} className="border-b border-slate-100 last:border-0">
+                    <td className="p-3 font-bold bg-slate-50 border-r">{item.kriteria}</td>
+                    <td className="p-3 border-r text-slate-600">{item.level.perluBimbingan}</td>
+                    <td className="p-3 border-r text-slate-600">{item.level.cukup}</td>
+                    <td className="p-3 border-r text-slate-600">{item.level.baik}</td>
+                    <td className="p-3 text-slate-600">{item.level.sangatBaik}</td>
                   </tr>
                 ))}
               </tbody>
@@ -91,9 +94,8 @@ const LampiranView: React.FC<Props> = ({ data }) => {
           </div>
         </section>
 
-        {/* Glosarium */}
         <section className="page-break-avoid">
-          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 uppercase">Glosarium</h2>
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 uppercase tracking-wide">Glosarium</h2>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {data.glosarium.map((item, i) => (
               <div key={i} className="p-3 border-l-4 border-indigo-200 bg-slate-50 rounded-r">
@@ -104,22 +106,9 @@ const LampiranView: React.FC<Props> = ({ data }) => {
           </dl>
         </section>
 
-        {/* Pengayaan & Remedial */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 page-break-avoid">
-          <div className="p-5 bg-green-50 rounded-xl border border-green-100">
-            <h3 className="font-bold text-green-800 mb-2 uppercase text-sm tracking-widest">Pengayaan</h3>
-            <p className="text-sm text-green-700">{data.pengayaanRemedial.pengayaan}</p>
-          </div>
-          <div className="p-5 bg-orange-50 rounded-xl border border-orange-100">
-            <h3 className="font-bold text-orange-800 mb-2 uppercase text-sm tracking-widest">Remedial</h3>
-            <p className="text-sm text-orange-700">{data.pengayaanRemedial.remedial}</p>
-          </div>
-        </section>
-
-        {/* Daftar Pustaka */}
-        <section className="page-break-avoid">
-          <h2 className="text-xl font-bold font-heading text-slate-800 mb-2 uppercase">Daftar Pustaka</h2>
-          <ul className="list-disc ml-5 text-sm text-slate-600 italic">
+        <section className="page-break-avoid border-t border-slate-100 pt-8">
+          <h2 className="text-xl font-bold font-heading text-slate-800 mb-4 uppercase tracking-wide">Daftar Pustaka</h2>
+          <ul className="list-disc ml-8 text-slate-600 space-y-2">
             {data.daftarPustaka.map((item, i) => <li key={i}>{item}</li>)}
           </ul>
         </section>
